@@ -27,7 +27,7 @@ def ensure_log_directory():
     if not os.path.exists("logs"):
         os.makedirs("logs")
 
-def Message(msg: str, level: str = "INFO"):
+def Message(msg: str, level: str = "INFO",client=True):
     """
     记录日志消息，带有终端颜色输出和文件记录。
 
@@ -52,8 +52,8 @@ def Message(msg: str, level: str = "INFO"):
     # 写入日志文件
     with open(f"logs/{day}.log", "a", encoding="utf-8") as f:
         f.write(log_msg + "\n")
-    
-    print(f"{color}{log_msg}{TerminalColors.ENDC}")
+    if(client):
+        print(f"{color}{log_msg}{TerminalColors.ENDC}")
 
 # 示例使用
 if __name__ == "__main__":
