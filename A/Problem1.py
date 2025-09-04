@@ -26,6 +26,15 @@ def work(dirction,dt=0.1):
         if t>FY1_tFly+FY1_tDrop+20+error:
             # Message(f"未找到答案，烟幕20s内没有保护目标,方向为{direction:.3f}rad","INFO")
             return -1
+    while True:
+        t+=dt
+        M1.time_tick(dt)
+        smokeBall.time_tick(dt)
+        if not Checker.visible(checkCylinder=real,smokeBall=smokeBall,missile=M1):
+            Message(f"当t={t:.3f}s时，烟幕能保护目标","INFO")
+        if t>FY1_tFly+FY1_tDrop+20+error:
+            # Message(f"未找到答案，烟幕20s内没有保护目标,方向为{direction:.3f}rad","INFO")
+            break
     L=LR
     while LR-LL>error:
         t=(LL+LR)/2
