@@ -84,8 +84,8 @@ def choose_new(step):
         direction_new+=2*math.pi
     elif direction_new>=2*math.pi:
         direction_new-=2*math.pi
-    FY1_v_new=(FY1_v+step0*math.sin(theta1)*math.cos(theta2)*35-70)%70+70
-    FY1_tFly_new=(FY1_tFly+step0*math.cos(theta1)*math.sin(theta3)*10)%20
+    FY1_v_new=(FY1_v+step0*math.sin(theta1)*math.cos(theta2)*35)%70+70
+    FY1_tFly_new=(FY1_tFly+step0*math.cos(theta1)*math.sin(theta3)*10+20)%20
     FY1_tDrop_new=(FY1_tDrop+step0*math.cos(theta1)*math.cos(theta3)*10)%20
     return [direction_new,FY1_v_new,FY1_tFly_new,FY1_tDrop_new ]
 
