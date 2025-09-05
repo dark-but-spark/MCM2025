@@ -1,4 +1,5 @@
 from util.Time import Time
+from tqdm import tqdm
 import os
 
 # 终端颜色代码
@@ -53,7 +54,7 @@ def Message(msg: str, level: str = "INFO",client=True):
     with open(f"logs/{day}.log", "a", encoding="utf-8") as f:
         f.write(log_msg + "\n")
     if(client):
-        print(f"{color}{log_msg}{TerminalColors.ENDC}")
+        tqdm.write(f"{color}{log_msg}{TerminalColors.ENDC}")
 
 # 示例使用
 if __name__ == "__main__":
