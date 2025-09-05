@@ -1,9 +1,18 @@
+from util.Log import Message
 class Missile:
     # 导弹来袭 从x,y,z位置以300m/s的速度向原点飞去
-    def __init__(self, x, y, z, v=300):
-        self.x = x
-        self.y = y
-        self.z = z
+    def __init__(self, x=0, y=0, z=0, v=300, id=-1):
+        if id==-1:
+            self.x = x
+            self.y = y
+            self.z = z
+        else:
+            M=[[0,0,0],[20000,0,2000],[19000,600,2100],[18000,-600,1900]]
+            if id>=len(M):
+                Message(f"导弹id错误，id={id}","CRITICAL")
+            self.x = M[id][0]
+            self.y = M[id][1]
+            self.z = M[id][2]
         self.vx = v*(self.x)/((self.x)**2+(self.y)**2+(self.z)**2)**0.5
         self.vy = v*(self.y)/((self.x)**2+(self.y)**2+(self.z)**2)**0.5
         self.vz = v*(self.z)/((self.x)**2+(self.y)**2+(self.z)**2)**0.5

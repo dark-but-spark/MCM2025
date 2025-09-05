@@ -10,8 +10,8 @@ from tqdm import tqdm
 
 
 def work(dirction,dt=0.1):
-    FY1=Fly(x=17800,y=0,z=1800,direction=dirction,v=FY1_v).fly(FY1_tFly).drop(FY1_tDrop)
-    M1=Missile(x=20000,y=0,z=2000).time(FY1_tFly+FY1_tDrop)
+    FY1=Fly(id=1,direction=dirction,v=FY1_v).fly(FY1_tFly).drop(FY1_tDrop)
+    M1=Missile(id=1).time(FY1_tFly+FY1_tDrop)
     smokeBall=SmokeBall(x=FY1.x,y=FY1.y,z=FY1.z,r=10,v=3)
     t=FY1_tFly+FY1_tDrop
     LL=FY1_tFly+FY1_tDrop;LR=FY1_tFly+FY1_tDrop
@@ -40,7 +40,7 @@ def work(dirction,dt=0.1):
     L=LR
     while LR-LL>error:
         t=(LL+LR)/2
-        M_new=Missile(x=20000,y=0,z=2000).time(t)
+        M_new=Missile(id=1).time(t)
         smokeBall_new=SmokeBall(x=FY1.x,y=FY1.y,z=FY1.z,r=10,v=3).time(t-FY1_tFly-FY1_tDrop)
         if not Checker.visible(checkCylinder=real,smokeBall=smokeBall_new,missile=M_new):
             L=LR=t
@@ -50,7 +50,7 @@ def work(dirction,dt=0.1):
     R=RL
     while RR-RL>error:
         t=(RL+RR)/2
-        M_new=Missile(x=20000,y=0,z=2000).time(t)
+        M_new=Missile(id=1).time(t)
         smokeBall_new=SmokeBall(x=FY1.x,y=FY1.y,z=FY1.z,r=10,v=3).time(t-FY1_tFly-FY1_tDrop)
         if not Checker.visible(checkCylinder=real,smokeBall=smokeBall_new,missile=M_new):
             R=RL=t

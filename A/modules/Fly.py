@@ -1,14 +1,23 @@
 import math
+from util.Log import Message
 class Fly:
-    def __init__(self, x, y, z, v=0, direction=0):
+    def __init__(self, x=0, y=0, z=0, v=0, direction=0, id=-1):
         '''
         x,y,z:初始位置
         v:速度
         direction:飞行方向（弧度制，0为x轴正方向，逆时针旋转）
          '''
-        self.x=x
-        self.y=y
-        self.z=z
+        if id==-1:
+            self.x=x
+            self.y=y
+            self.z=z
+        else:
+            FY=[[0,0,0],[17800,0,1800],[12000,1400,1400],[6000,-3000,700],[11000,2000,1800],[13000,-2000,1300]]
+            if id>=len(FY):
+                Message(f"飞行器id错误，id={id}","CRITICAL")
+            self.x=FY[id][0]
+            self.y=FY[id][1]
+            self.z=FY[id][2]
         self.vx=v*math.cos(direction)
         self.vy=v*math.sin(direction)
         self.vz=0
