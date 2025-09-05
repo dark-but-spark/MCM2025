@@ -44,6 +44,8 @@ def visible(checkCylinder,smokeBall,missile):
     OM=(np.array([missile.x,missile.y,missile.z])-np.array([smokeBall.x,smokeBall.y,smokeBall.z]))
     if np.dot(OM,OM)<=smokeBall.r**2:
         return False# 导弹在烟雾弹内，必然看不到真目标
+    if missile.x<0:
+        return True# 导弹已经炸了
     checkN=50
     for i in range(checkN):
         point=checkCylinder.random_point_on_surface()
