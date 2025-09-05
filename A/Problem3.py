@@ -25,8 +25,8 @@ def work_interval(direction, FY1_v, FY1_tFly, FY1_tDrop, dt=0.1):
             LL = t - dt; LR = t; RL = t
             break
         if t > FY1_tFly + FY1_tDrop + 20 + error:
-             # Message(f"未找到答案，烟幕20s内没有保护目标,方向为{direction:.3f}rad","INFO")
-            return (-1.0, -1.0)
+            #Message(f"未找到答案，烟幕20s内没有保护目标,方向为{direction:.3f}rad","INFO")
+            return (-1, -1)
 
     L = LR
     while LR - LL > error:
@@ -50,6 +50,7 @@ def work_interval(direction, FY1_v, FY1_tFly, FY1_tDrop, dt=0.1):
 
     return (L, R)
 
+
 def union_length(intervals):# 找交集
     ivs = [iv for iv in intervals if iv[0] >= 0 and iv[1] >= 0 and iv[1] > iv[0] + error]  # 过滤非法区间
     if not ivs:
@@ -67,30 +68,14 @@ def union_length(intervals):# 找交集
     tot += (curR - curL)
     return tot
 
-#投放时间
-def project_spacing(t1, t2, t3, delta=1.0, tmax=20.0):
-    t1 = max(0, min(t1, max(0, tmax - 2*delta)))
-    t2 = max(t1 + delta, min(t2, max(delta, tmax - delta)))
-    t3 = max(t2 + delta, min(t3, tmax))
-    return t1, t2, t3
-
-def clamp_drop(tFly, tDrop):
-    hi = max(0.0, 20.0 - tFly)
-    if hi <= 0.0:
-        return 0.0
-    tDrop = tDrop % (hi if hi > 0 else 1.0)
-    return tDrop
-
 def work_three(direction, FY1_v, tFly1, tDrop1, tFly2, tDrop2, tFly3, tDrop3, dt=0.1):
-    (tFly1, tFly2, tFly3) = project_spacing(tFly1, tFly2, tFly3, delta=1.0, tmax=20.0)
-    tDrop1 = clamp_drop(tFly1, tDrop1)
-    tDrop2 = clamp_drop(tFly2, tDrop2)
-    tDrop3 = clamp_drop(tFly3, tDrop3)
+    (tFly1, tFly2, tFly3) = project_spacing(tFly1, tFly2, tFly3, delta=1.0)
 
     iv1 = work_interval(direction, FY1_v, tFly1, tDrop1, dt=dt)
     iv2 = work_interval(direction, FY1_v, tFly2, tDrop2, dt=dt)
     iv3 = work_interval(direction, FY1_v, tFly3, tDrop3, dt=dt)
-
+    if iv1==(-1,-1) and iv2==(-1,-1) and iv3==(-1,-1):
+        return -1
     ulen = union_length([iv1, iv2, iv3])
 
     if ulen > 0:
@@ -117,7 +102,22 @@ def update3(direction_new, FY1_v_new, tFly1_new, tDrop1_new, tFly2_new, tDrop2_n
     tFly1, tDrop1 = tFly1_new, tDrop1_new
     tFly2, tDrop2 = tFly2_new, tDrop2_new
     tFly3, tDrop3 = tFly3_new, tDrop3_new
-# 生成邻域 确定可行方案
+
+def project_spacing(t1, t2, t3, delta=1.0):
+    # 保证间隔 delta
+    ts = sorted([t1, t2, t3])
+    if ts[1] < ts[0] + delta:
+        ts[1] = ts[0] + delta
+    if ts[2] < ts[1] + delta:
+        ts[2] = ts[1] + delta
+    return ts[0], ts[1], ts[2]
+
+def clamp_nonneg(x):
+    return x if x >= 0.0 else 0.0
+
+def clamp(x, lo, hi):
+    return lo if x < lo else (hi if x > hi else x)
+
 def choose_new3(step):
     global direction, FY1_v, tFly1, tDrop1, tFly2, tDrop2, tFly3, tDrop3
     s0 = step * random.uniform(-1, 1)
@@ -126,24 +126,30 @@ def choose_new3(step):
     th3 = random.uniform(0, 2*math.pi)
     th4 = random.uniform(0, 2*math.pi)
     th5 = random.uniform(0, 2*math.pi)
+    th6 = random.uniform(0, 2*math.pi)
 
+    # 航向扰动
     direction_new = direction + s0 * math.sin(th1) * math.sin(th2) * math.pi
     if direction_new < 0: direction_new += 2*math.pi
     elif direction_new >= 2*math.pi: direction_new -= 2*math.pi
 
-    FY1_v_new = (FY1_v + s0 * math.sin(th1) * math.cos(th2) * 35 - 70) % 70 + 70
+    # 速度扰动（保证区间为[70, 140]）
+    FY1_v_new = clamp(FY1_v + s0 * math.sin(th1) * math.cos(th2) * 20.0, 70.0, 140.0)
 
-    tFly1_new = (tFly1 + s0 * math.cos(th1) * math.sin(th3) * 10) % 20
-    tFly2_new = (tFly2 + s0 * math.cos(th1) * math.cos(th3) * 10) % 20
-    tFly3_new = (tFly3 + s0 * math.cos(th1) * math.sin(th4) * 10) % 20
+    # 投放时刻扰动
+    tFly1_new = tFly1 + s0 * math.cos(th1) * math.sin(th3) * 5.0
+    tFly2_new = tFly2 + s0 * math.cos(th1) * math.cos(th3) * 5.0
+    tFly3_new = tFly3 + s0 * math.cos(th1) * math.sin(th4) * 5.0
 
-    tFly1_new, tFly2_new, tFly3_new = project_spacing(tFly1_new, tFly2_new, tFly3_new, delta=1.0, tmax=20.0)
+    tFly1_new, tFly2_new, tFly3_new = project_spacing(tFly1_new, tFly2_new, tFly3_new, delta=1.0)
 
-    tDrop1_new = (tDrop1 + s0 * math.cos(th1) * math.cos(th4) * 10) % max(0.0001, 20.0 - tFly1_new)
-    tDrop2_new = (tDrop2 + s0 * math.sin(th5) * math.sin(th4) * 10) % max(0.0001, 20.0 - tFly2_new)
-    tDrop3_new = (tDrop3 + s0 * math.cos(th5) * math.cos(th4) * 10) % max(0.0001, 20.0 - tFly3_new)
+    # 引信延时扰动
+    tDrop1_new = clamp_nonneg(tDrop1 + s0 * math.cos(th1) * math.cos(th4) * 2.0)
+    tDrop2_new = clamp_nonneg(tDrop2 + s0 * math.sin(th5) * math.sin(th4) * 2.0)
+    tDrop3_new = clamp_nonneg(tDrop3 + s0 * math.cos(th6) * math.cos(th3) * 2.0)
 
-    return [direction_new, FY1_v_new, tFly1_new, tDrop1_new, tFly2_new, tDrop2_new, tFly3_new, tDrop3_new]
+    return [direction_new, FY1_v_new,tFly1_new, tDrop1_new,tFly2_new, tDrop2_new,tFly3_new, tDrop3_new]
+
 
 Message("开始运行Problem3", "INFO")
 
@@ -152,31 +158,33 @@ error = 1e-5
 T = 2000.0
 step = 5.0
 alpha = math.exp(-1e-2)
+INIT_MAX=60.0
+drop_MAX=10.0
 
 direction = random.uniform(0, 2*math.pi)
 FY1_v = random.uniform(70, 140)
 
-tFly1 = random.uniform(0, 18)
+tFly1 = random.uniform(0, INIT_MAX-2.0)
 tFly2 = tFly1 + 1.0 + random.uniform(0, 1.0)
 tFly3 = tFly2 + 1.0 + random.uniform(0, 1.0)
-tFly1, tFly2, tFly3 = project_spacing(tFly1, tFly2, tFly3, delta=1.0, tmax=20.0)
+tFly1, tFly2, tFly3 = project_spacing(tFly1, tFly2, tFly3, delta=1.0)
 
-tDrop1 = random.uniform(0, max(0.0, 20.0 - tFly1))
-tDrop2 = random.uniform(0, max(0.0, 20.0 - tFly2))
-tDrop3 = random.uniform(0, max(0.0, 20.0 - tFly3))
+tDrop1 = random.uniform(0,drop_MAX)
+tDrop2 = random.uniform(0,drop_MAX)
+tDrop3 = random.uniform(0,drop_MAX)
 
 nowTime3 = work_three(direction, FY1_v, tFly1, tDrop1, tFly2, tDrop2, tFly3, tDrop3)
 attempts = 0
 while nowTime3 < 0 and attempts < 1000:
     direction = random.uniform(0, 2*math.pi)
     FY1_v = random.uniform(70, 140)
-    tFly1 = random.uniform(0, 18)
+    tFly1 = random.uniform(0, INIT_MAX-2.0)
     tFly2 = tFly1 + 1.0 + random.uniform(0, 1.0)
     tFly3 = tFly2 + 1.0 + random.uniform(0, 1.0)
-    tFly1, tFly2, tFly3 = project_spacing(tFly1, tFly2, tFly3, delta=1.0, tmax=20.0)
-    tDrop1 = random.uniform(0, max(0.0, 20.0 - tFly1))
-    tDrop2 = random.uniform(0, max(0.0, 20.0 - tFly2))
-    tDrop3 = random.uniform(0, max(0.0, 20.0 - tFly3))
+    tFly1, tFly2, tFly3 = project_spacing(tFly1, tFly2, tFly3, delta=1.0)
+    tDrop1 = random.uniform(0,drop_MAX)
+    tDrop2 = random.uniform(0,drop_MAX)
+    tDrop3 = random.uniform(0,drop_MAX)
     nowTime3 = work_three(direction, FY1_v, tFly1, tDrop1, tFly2, tDrop2, tFly3, tDrop3)
     attempts += 1
 
