@@ -129,6 +129,33 @@ for i in tqdm(range(2000)):
     step=step*alpha
     if(step<=error):
         break
+Message(f"开始对最优解梯度下降","INFO")
+T=2000
+step=5
+alpha=math.exp(-1e-2)
+direction=direction_best
+FY1_v=FY1_v_best
+FY1_tFly=FY1_tFly_best
+FY1_tDrop=FY1_tDrop_best
+nowTime=work(direction,FY1_v,FY1_tFly,FY1_tDrop)
+update_best()
+Message(f"最终结果，烟幕保护时间为{maxTime:.3f}s，方向为{direction_best:.3f}rad，速度为{FY1_v_best:.3f}m/s，飞行时间为{FY1_tFly_best:.3f}s，投放时间为{FY1_tDrop_best:.3f}s","INFO")
+for i in tqdm(range(2000)):
+    direction_new,FY1_v_new,FY1_tFly_new,FY1_tDrop_new =choose_new(step)
+    predictTime=work(direction_new,FY1_v_new,FY1_tFly_new,FY1_tDrop_new)
+    while predictTime<0:
+        direction_new,FY1_v_new,FY1_tFly_new,FY1_tDrop_new=choose_new(step)
+        predictTime=work(direction_new,FY1_v_new,FY1_tFly_new,FY1_tDrop_new)
+    delta=predictTime-nowTime
+    if delta>0:
+        update(direction_new,FY1_v_new,FY1_tFly_new,FY1_tDrop_new)
+        nowTime=predictTime
+        if nowTime>maxTime:
+            update_best()
+    T=T*alpha
+    step=step*alpha
+    if(step<=error):
+        break
 Message(f"最终结果，烟幕保护时间为{maxTime:.3f}s，方向为{direction_best:.3f}rad，速度为{FY1_v_best:.3f}m/s，飞行时间为{FY1_tFly_best:.3f}s，投放时间为{FY1_tDrop_best:.3f}s","INFO")
 Message("运行结束Problem2","INFO")
         

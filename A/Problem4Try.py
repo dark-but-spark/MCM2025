@@ -131,6 +131,33 @@ for FYid in range(1,4):
         step=step*alpha
         if(step<=error):
             break
+    Message(f"开始梯度下降微调FY{FYid}","INFO")
+    T=2000
+    step=5
+    alpha=math.exp(-1e-2)
+    direction=direction_best
+    FY1_v=FY1_v_best
+    FY1_tFly=FY1_tFly_best
+    FY1_tDrop=FY1_tDrop_best
+    nowTime=work(direction,FY1_v,FY1_tFly,FY1_tDrop,FYid=FYid)
+    update_best()
+    Message(f"最终结果，烟幕保护时间为{maxTime:.3f}s，FY{FYid}方向为{direction_best:.3f}rad，速度为{FY1_v_best:.3f}m/s，飞行时间为{FY1_tFly_best:.3f}s，投放时间为{FY1_tDrop_best:.3f}s","INFO")
+    for i in tqdm(range(2000)):
+        direction_new,FY1_v_new,FY1_tFly_new,FY1_tDrop_new =choose_new(step)
+        predictTime=work(direction_new,FY1_v_new,FY1_tFly_new,FY1_tDrop_new,FYid=FYid)
+        while predictTime<0:
+            direction_new,FY1_v_new,FY1_tFly_new,FY1_tDrop_new=choose_new(step)
+            predictTime=work(direction_new,FY1_v_new,FY1_tFly_new,FY1_tDrop_new,FYid=FYid)
+        delta=predictTime-nowTime
+        if delta>0:
+            update(direction_new,FY1_v_new,FY1_tFly_new,FY1_tDrop_new)
+            nowTime=predictTime
+            if nowTime>maxTime:
+                update_best()
+        T=T*alpha
+        step=step*alpha
+        if(step<=error):
+            break
     ans+=maxTime
     Message(f"最终结果，烟幕保护时间为{maxTime:.3f}s，FY{FYid}方向为{direction_best:.3f}rad，速度为{FY1_v_best:.3f}m/s，飞行时间为{FY1_tFly_best:.3f}s，投放时间为{FY1_tDrop_best:.3f}s","INFO")
 Message(f"三枚烟幕总保护时间为{ans:.3f}s","INFO")

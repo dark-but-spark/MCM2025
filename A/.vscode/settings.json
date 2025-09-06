@@ -1,6 +1,8 @@
 {
     "files.associations": {
         "*.html": "html",
-        "utility": "cpp"
-    }
+        "utility": "cpp",
+        "thread": "cpp"
+    },
+    "commentTranslate.hover.enabled": false
 }
