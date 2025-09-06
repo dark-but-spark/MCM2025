@@ -98,29 +98,23 @@ def union_length(intervals):#区间并集
     tot += (curR - curL)
     return tot
 
+# === REPLACE: work_three，内部先转 t0 再映射到 (tFly,tDrop) ===
 def work_three(direction, FY1_v,
                tFly1, tDrop1,
                tFly2, tDrop2,
                tFly3, tDrop3,
-               dt_coarse=0.13,
-               overlap_penalty=0.2):
-    """
-    返回 union_len - λ*overlap,union_len
-    union_len 为有效区间的并集长度 overlap = sum_len - union_len
-    只要任一枚有效即可参与并集；全无效则返回 0.0
-    """
+               dt_coarse=0.10,
+               overlap_penalty=0.15):
+    t01 = tFly1 + tDrop1
+    t02 = tFly2 + tDrop2
+    t03 = tFly3 + tDrop3
+    (p1, p2, p3, _) = t0_to_release(t01, t02, t03)
+    triples = [p1, p2, p3]
 
-    (tf1, td1), (tf2, td2), (tf3, td3) = enforce_spacing_pairs([(tFly1, tDrop1), (tFly2, tDrop2), (tFly3, tDrop3)], delta=1.0)
+    # 先算一次，如果有无效段，做一次“接力修复”
+    triples, ivs = repair_by_chaining(direction, FY1_v, triples, dt_coarse=dt_coarse, gap=0.08)
 
-    tFly1, tDrop1 = tf1, td1
-    tFly2, tDrop2 = tf2, td2
-    tFly3, tDrop3 = tf3, td3
-
-    iv1 = work_interval(direction, FY1_v, tFly1, tDrop1, dt_coarse=dt_coarse)
-    iv2 = work_interval(direction, FY1_v, tFly2, tDrop2, dt_coarse=dt_coarse)
-    iv3 = work_interval(direction, FY1_v, tFly3, tDrop3, dt_coarse=dt_coarse)
-
-    valid = [iv for iv in (iv1, iv2, iv3) if iv[0] >= 0.0]
+    valid = [iv for iv in ivs if iv[0] >= 0.0]
     if not valid:
         return 0.0, 0.0
 
@@ -168,36 +162,109 @@ def update(direction_new, FY1_v_new,
 def clamp_nonneg(x): return x if x >= 0.0 else 0.0
 def clamp(x, lo, hi): return lo if x < lo else (hi if x > hi else x)
 
+# 仍然放在 clamp 之后
+def t0_to_release(t01, t02, t03, TF_MAX=180.0, TD_MAX=60.0, eps=0.20):
+    tf1 = max(0.0, min(t01 - eps, TF_MAX)); td1 = t01 - tf1
+    tf2 = max(0.0, min(t02 - eps, TF_MAX)); td2 = t02 - tf2
+    tf3 = max(0.0, min(t03 - eps, TF_MAX)); td3 = t03 - tf3
+    if tf2 < tf1 + 1.0:
+        tf2 = tf1 + 1.0; t02 = max(t02, tf2 + eps); td2 = t02 - tf2
+    if tf3 < tf2 + 1.0:
+        tf3 = tf2 + 1.0; t03 = max(t03, tf3 + eps); td3 = t03 - tf3
+    td1 = min(td1, TD_MAX); td2 = min(td2, TD_MAX); td3 = min(td3, TD_MAX)
+    return (tf1, td1), (tf2, td2), (tf3, td3), (t01, t02, t03)
 
-def chain_seed_from_first(direction, v, tFly1, tDrop1, iv1, delta_gap=0.05):
-    """
-    已知首枚的遮蔽区间 iv1=[L,R] 在它附近构造第2、第3枚 尽量让三段相邻（小间隙）。
-    返回：(tFly1,tDrop1,tFly2,tDrop2,tFly3,tDrop3)
-    """
+# 计算三段后，若有无效段，就把它们“接”在最近的有效段右端之后（修复函数）
+def repair_by_chaining(direction, v, triples, dt_coarse=0.10, gap=0.08):
+    # triples: [(tf1,td1),(tf2,td2),(tf3,td3)]
+    ivs = [work_interval(direction, v, tf, td, dt_coarse=dt_coarse) for tf,td in triples]
+    valid_idx = [i for i,iv in enumerate(ivs) if iv[0] >= 0.0]
+    if len(valid_idx) == 3:
+        return triples, ivs
+    if not valid_idx:
+        return triples, ivs  # 全无效，交回去让上层重采样
+
+    # 以“最靠后的有效段”为锚点，把无效段往后接
+    anchor = max(valid_idx, key=lambda i: ivs[i][1])
+    R = ivs[anchor][1]
+
+    tf_list = [tf for tf,_ in triples]
+    # 目标起爆时刻按接力排：R+gap, R+2*gap (+给个最小 span 保护)
+    min_span = max(0.5, ivs[anchor][1] - ivs[anchor][0]) if ivs[anchor][0] >= 0 else 1.0
+    targets = []
+    for k in range(3):
+        if k == anchor: 
+            targets.append(tf_list[k] + (triples[k][1]))  # 这个值不重要，只占位
+        else:
+            targets.append(R + gap)
+            R += gap + min_span  # 下一段再往后一点
+
+    # 把需要修复的段，按目标 t0 用 t0->(tFly,tDrop) 回推
+    out = list(triples)
+    for i in range(3):
+        if i in valid_idx: 
+            continue
+        t0i = targets[i]
+        (p1, p2, p3, _) = t0_to_release(
+            t0i if i==0 else (out[0][0]+out[0][1]),
+            t0i if i==1 else (out[1][0]+out[1][1]),
+            t0i if i==2 else (out[2][0]+out[2][1]),
+        )
+        out = [p1, p2, p3]  # 简单起见，统一更新三段
+        break  # 一次修一个，够用
+    ivs2 = [work_interval(direction, v, tf, td, dt_coarse=dt_coarse) for tf,td in out]
+    return out, ivs2
+
+# === REPLACE: chain_seed_from_first，按 t0 接力，再统一映射 ===
+def chain_seed_from_first(direction, v, tFly1, tDrop1, iv1, gap=0.10):
     L, R = iv1
-    span = max(0.2, R - L)          # 首段时长（避免过小）
-    t0_1 = tFly1 + tDrop1           # 首枚起爆时刻
+    span = max(0.5, R - L)       # 第一段时长给个下限，避免太窄
+    t01  = tFly1 + tDrop1
+    t02  = R + gap
+    t03  = R + 2*gap + span
 
-    # 目标把三段排成： [L, R] 、 [R+gap, R+gap+span] 、 [R+2*gap, R+2*gap+span]
-    t0_2_target = R + delta_gap
-    t0_3_target = R + 2*delta_gap + span
+    (p1, p2, p3, _) = t0_to_release(t01, t02, t03)  # p* 是 (tFly,tDrop) 对
+    (tf1, td1), (tf2, td2), (tf3, td3) = p1, p2, p3
+    return tf1, td1, tf2, td2, tf3, td3
+# === REPLACE: choose_new_time_only ===
+def choose_new_time_only(step):
+    global direction, FY1_v, tFly1, tDrop1, tFly2, tDrop2, tFly3, tDrop3
+    s0  = step * random.uniform(-1, 1)
+    th1 = random.uniform(0, 2*math.pi)
+    th2 = random.uniform(0, 2*math.pi)
+    th3 = random.uniform(0, 2*math.pi)
 
-    # 保持 tFly 两两至少 1s；简单取：
-    tFly2 = max(0.0, tFly1 + 1.0)
-    tFly3 = max(0.0, tFly2 + 1.0)
+    # 以 t0 为主的小扰动
+    t01 = (tFly1 + tDrop1) + 0.8*s0*math.sin(th1)
+    t02 = (tFly2 + tDrop2) + 0.8*s0*math.cos(th2)
+    t03 = (tFly3 + tDrop3) + 0.8*s0*math.sin(th3)
 
-    # 反推对应的 tDrop，非负
-    tDrop2 = max(0.0, t0_2_target - tFly2)
-    tDrop3 = max(0.0, t0_3_target - tFly3)
+    (p1, p2, p3, _) = t0_to_release(t01, t02, t03)
+    (tf1, td1), (tf2, td2), (tf3, td3) = p1, p2, p3
+    return [direction, FY1_v, tf1, td1, tf2, td2, tf3, td3]
 
-    # 成对排序/间隔修正
-    (tf1,td1),(tf2,td2),(tf3,td3) = enforce_spacing_pairs(
-        [(tFly1,tDrop1),(tFly2,tDrop2),(tFly3,tDrop3)], delta=1.0
-    )
-    tDrop1 = max(0.0, t0_1 - tf1)
-    tDrop2 = max(0.0, t0_2_target - tf2)
-    tDrop3 = max(0.0, t0_3_target - tf3)
-    return tf1, tDrop1, tf2, tDrop2, tf3, tDrop3
+# === REPLACE: choose_new_full（后20%再轻动方向与速度） ===
+def choose_new_full(step):
+    global direction, FY1_v, tFly1, tDrop1, tFly2, tDrop2, tFly3, tDrop3
+    s0  = step * random.uniform(-1, 1)
+    th1 = random.uniform(0, 2*math.pi)
+    th2 = random.uniform(0, 2*math.pi)
+    th3 = random.uniform(0, 2*math.pi)
+
+    # 轻微扰动航向与速度
+    direction_new = direction + 0.12*s0*math.sin(th1)
+    if direction_new < 0: direction_new += 2*math.pi
+    elif direction_new >= 2*math.pi: direction_new -= 2*math.pi
+    FY1_v_new = clamp(FY1_v + 1.2*s0*math.cos(th1), 70.0, 140.0)
+
+    # 仍然主控 t0
+    t01 = (tFly1 + tDrop1) + 0.8*s0*math.sin(th1)
+    t02 = (tFly2 + tDrop2) + 0.8*s0*math.cos(th2)
+    t03 = (tFly3 + tDrop3) + 0.8*s0*math.sin(th3)
+
+    (p1, p2, p3, _) = t0_to_release(t01, t02, t03)
+    (tf1, td1), (tf2, td2), (tf3, td3) = p1, p2, p3
+    return [direction_new, FY1_v_new, tf1, td1, tf2, td2, tf3, td3]
 
 
 def choose_new(step):
@@ -269,125 +336,105 @@ def find_seed(INIT_MAX, DROP_INIT, dt_coarse=0.13):
 
 
 Message("开始运行 Problem3", "INFO")
+
+# 先定义环境常量（work_interval 需要用到）
 real  = Cylinder(r=7, height=10, x=0, y=200, z=0)
 error = 1e-5
-INIT_MAX   = 180.0   # 初始投放时刻
-DROP_INIT  = 60.0   # 初始延时范围上界（仅用于采样初值，非硬约束）
-direction = random.uniform(0, 2*math.pi)
-FY1_v     = random.uniform(70, 140)
 
-tFly1 = random.uniform(0.0, INIT_MAX - 2.0)
-tFly2 = tFly1 + 1.0 + random.uniform(0.0, 1.0)
-tFly3 = tFly2 + 1.0 + random.uniform(0.0, 1.0)
+# —— 粗搜一个能打出较长遮蔽的单发 ——
+def single_seed(dt=0.10):
+    best = None
+    for k in range(16):                 # 航向 16 等分
+        d = 2*math.pi * k / 16
+        for v in (70, 85, 100, 115, 130, 140):
+            for tf in (0, 5, 10, 15, 20, 25, 30):
+                for td in (0.2, 1, 2, 3, 4, 5, 6, 7, 8):
+                    iv = work_interval(d, v, tf, td, dt_coarse=dt)
+                    if iv[0] >= 0.0:
+                        span = iv[1] - iv[0]
+                        if (best is None) or (span > best[0]):
+                            best = (span, d, v, tf, td, iv)
+    return best
 
-tDrop1 = random.uniform(0.0, DROP_INIT)
-tDrop2 = random.uniform(0.0, DROP_INIT)
-tDrop3 = random.uniform(0.0, DROP_INIT)
-
-(tf1, td1), (tf2, td2), (tf3, td3) = enforce_spacing_pairs([(tFly1, tDrop1), (tFly2, tDrop2), (tFly3, tDrop3)], delta=1.0)
-tFly1, tDrop1 = tf1, td1
-tFly2, tDrop2 = tf2, td2
-tFly3, tDrop3 = tf3, td3
-
-
-nowscore,nowTime = work_three(direction, FY1_v,
-                          tFly1, tDrop1,
-                          tFly2, tDrop2,
-                          tFly3, tDrop3,
-                          dt_coarse=0.13,overlap_penalty=0.2)
-
-
-while nowTime<0:
-    direction=random.uniform(0,2*math.pi)
-    FY1_v=random.uniform(70,140)
+# 用单发种子 + 接力生成三发；如果找不到，再退回随机初始化
+seed = single_seed(dt=0.10)
+if seed:
+    _, direction, FY1_v, tFly1, tDrop1, iv1 = seed
+    # 接力构造 2/3 发
+    L, R = iv1
+    span = max(0.5, R - L)
+    t02  = R + 0.08
+    t03  = R + 0.08 + span + 0.08
+    (p1, p2, p3, _) = t0_to_release(tFly1 + tDrop1, t02, t03)
+    (tFly1, tDrop1), (tFly2, tDrop2), (tFly3, tDrop3) = p1, p2, p3
+else:
+    Message("粗搜不到单发遮蔽，转为随机初始化", "WARNING")
+    direction = random.uniform(0, 2*math.pi)
+    FY1_v     = random.uniform(70, 140)
+    INIT_MAX, DROP_INIT = 180.0, 60.0
     tFly1 = random.uniform(0.0, INIT_MAX - 2.0)
     tFly2 = tFly1 + 1.0 + random.uniform(0.0, 1.0)
     tFly3 = tFly2 + 1.0 + random.uniform(0.0, 1.0)
-
     tDrop1 = random.uniform(0.0, DROP_INIT)
     tDrop2 = random.uniform(0.0, DROP_INIT)
     tDrop3 = random.uniform(0.0, DROP_INIT)
-
-    (tf1, td1), (tf2, td2), (tf3, td3) = enforce_spacing_pairs([(tFly1, tDrop1), (tFly2, tDrop2), (tFly3, tDrop3)], delta=1.0)
+    (tf1, td1), (tf2, td2), (tf3, td3) = enforce_spacing_pairs(
+        [(tFly1, tDrop1), (tFly2, tDrop2), (tFly3, tDrop3)], delta=1.0)
     tFly1, tDrop1 = tf1, td1
     tFly2, tDrop2 = tf2, td2
     tFly3, tDrop3 = tf3, td3
-    nowscore,nowTime = work_three(direction, FY1_v,
-                          tFly1, tDrop1,
-                          tFly2, tDrop2,
-                          tFly3, tDrop3,
-                          dt_coarse=0.13,overlap_penalty=0.2)
+
+# —— 计算初值得分（建议用 dt_coarse=0.10, overlap_penalty=0.15）——
+nowscore, nowTime = work_three(
+    direction, FY1_v,
+    tFly1, tDrop1, tFly2, tDrop2, tFly3, tDrop3,
+    dt_coarse=0.10, overlap_penalty=0.15
+)
 update_best()
-# 自检打印 
+
+# 自检打印
 ivs0 = [
-        work_interval(direction, FY1_v, tFly1, tDrop1, dt_coarse=0.13),
-        work_interval(direction, FY1_v, tFly2, tDrop2, dt_coarse=0.13),
-        work_interval(direction, FY1_v, tFly3, tDrop3, dt_coarse=0.13),
-        ]
+    work_interval(direction, FY1_v, tFly1, tDrop1, dt_coarse=0.10),
+    work_interval(direction, FY1_v, tFly2, tDrop2, dt_coarse=0.10),
+    work_interval(direction, FY1_v, tFly3, tDrop3, dt_coarse=0.10),
+]
 Message(f"[init intervals] {ivs0}", "INFO")
 
-# 避免初始的三枚导弹都是 (-1,-1)
-if all(iv[0] < 0 for iv in ivs0):
-    seed = find_seed(INIT_MAX, DROP_INIT, dt_coarse=0.13)
-    if seed is not None:
-        direction, FY1_v, tFly1, tDrop1, iv = seed
-        tFly1, tDrop1, tFly2, tDrop2, tFly3, tDrop3 = chain_seed_from_first(direction, FY1_v, tFly1, tDrop1, iv, delta_gap=0.05)
-        nowscore, nowTime = work_three(direction, FY1_v,
-                                   tFly1, tDrop1, tFly2, tDrop2, tFly3, tDrop3,
-                                   dt_coarse=0.13, overlap_penalty=0.2)
-        Message(f"[seed used] dir={direction:.3f}, v={FY1_v:.1f}, iv={iv}, "
-                f"tFly=({tFly1:.2f},{tFly2:.2f},{tFly3:.2f}), "
-                f"tDrop=({tDrop1:.2f},{tDrop2:.2f},{tDrop3:.2f})", "INFO")
-    else:
-        Message("种子扫描未找到单发遮蔽；建议再放宽 INIT_MAX / DROP_INIT 或减小 dt_coarse", "WARNING")
+# 退火参数
+T      = 1200.0
+alpha  = math.exp(-8e-3)
+step   = 4.0
+N_iter = 3000
 
+for it in tqdm(range(N_iter)):
+    # 前 80% 只调时间；后 20% 再轻动方向/速度
+    cand = choose_new_time_only(step) if it < 0.8*N_iter else choose_new_full(step)
 
-maxscore = -1.0
-direction_best = FY1_v_best = 0.0
-tFly1_best = tDrop1_best = tFly2_best = tDrop2_best = tFly3_best = tDrop3_best = 0.0
+    direction_new, FY1_v_new, tFly1_new, tDrop1_new, tFly2_new, tDrop2_new, tFly3_new, tDrop3_new = cand
+    predictScore, predictTime = work_three(
+        direction_new, FY1_v_new,
+        tFly1_new, tDrop1_new, tFly2_new, tDrop2_new, tFly3_new, tDrop3_new,
+        dt_coarse=0.10, overlap_penalty=0.15
+    )
 
-if nowscore > 0:
-    update_best()
-else:
-    Message("初始化 score=0，进入退火搜索", "INFO")
-
-T= 2000.0
-alpha= math.exp(-1e-2)
-step=5
-
-
-for i in tqdm(range(3000)):
-    direction_new, FY1_v_new, tFly1_new, tDrop1_new, tFly2_new, tDrop2_new, tFly3_new, tDrop3_new = choose_new(step)
-    predictScore,predictTime= work_three(direction_new, FY1_v_new,
-                                 tFly1_new, tDrop1_new,
-                                 tFly2_new, tDrop2_new,
-                                 tFly3_new, tDrop3_new,
-                                 dt_coarse=0.13,overlap_penalty=0.2)
-    while predictScore < 0:
-        direction_new, FY1_v_new, tFly1_new, tDrop1_new, tFly2_new, tDrop2_new, tFly3_new, tDrop3_new = choose_new(step)
-        predictScore,predictTime = work_three(direction_new, FY1_v_new,
-                                 tFly1_new, tDrop1_new,
-                                 tFly2_new, tDrop2_new,
-                                 tFly3_new, tDrop3_new,
-                                 dt_coarse=0.13,overlap_penalty=0.2)
     delta = predictScore - nowscore
     if delta > 0 or math.exp(delta / T) > random.random():
         update(direction_new, FY1_v_new,
-                    tFly1_new, tDrop1_new,
-                    tFly2_new, tDrop2_new,
-                    tFly3_new, tDrop3_new)
-        nowscore = predictScore
-        nowTime = predictTime
-        if nowscore> maxscore:
-                update_best()
+               tFly1_new, tDrop1_new, tFly2_new, tDrop2_new, tFly3_new, tDrop3_new)
+        nowscore, nowTime = predictScore, predictTime
+        if nowscore > maxscore:
+            update_best()
 
-    T*= alpha
-    step*= alpha
-    MIN_STEP=1e-2
-    if step <= MIN_STEP:
-        step = MIN_STEP
+    T    *= alpha
+    step *= alpha
+    if step < 0.02:
+        step = 0.02
 
-Message(f"最终最优 score={maxscore:.3f}, Time={len_best:.3f} dir={direction_best:.3f}, v={FY1_v_best:.2f}, "
-            f"tFly=({tFly1_best:.2f},{tFly2_best:.2f},{tFly3_best:.2f}), "
-            f"tDrop=({tDrop1_best:.2f},{tDrop2_best:.2f},{tDrop3_best:.2f})", "INFO")
+Message(
+    f"最终最优 score={maxscore:.3f}, Time={len_best:.3f} "
+    f"dir={direction_best:.3f}, v={FY1_v_best:.2f}, "
+    f"tFly=({tFly1_best:.2f},{tFly2_best:.2f},{tFly3_best:.2f}), "
+    f"tDrop=({tDrop1_best:.2f},{tDrop2_best:.2f},{tDrop3_best:.2f})",
+    "INFO"
+)
 Message("运行结束 Problem3", "INFO")
