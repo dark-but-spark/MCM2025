@@ -340,30 +340,108 @@ Message("开始运行 Problem3", "INFO")
 real  = Cylinder(r=7, height=10, x=0, y=200, z=0)
 error = 1e-5
 
-# —— 粗搜一个能打出较长遮蔽的单发 ——
-def single_seed(dt=0.07):  # ← 粗搜也稍微细一点
+def single_seed(dt=0.06):
     """
-    扫更密的航向、速度、tFly、tDrop 网格，尽量捞到 6s+ 的单段遮蔽
-    说明：
-      - 航向：32 等分
-      - 速度：80~130 步长 10（覆盖你现在的 130 这一带）
-      - tFly：0~40 步长 2
-      - tDrop：0.0, 0.2, 0.5~8.0（0.5 一个台阶）
+    先大范围粗扫，再对最好的若干候选做一次局部精修（坐标搜索），
+    尽量把单段做到 6s+。
     """
-    best = None
-    for k in range(32):                              # ← 16 -> 32
-        d = 2*math.pi * k / 32
-        for v in (80, 90, 100, 110, 120, 130):       # ← 保守但覆盖关键段
-            for tf in range(0, 41, 2):               # ← 0,2,4,...,40
-                # 0.0 和 0.2 单独试，其余从 0.5 开始到 8.0
-                td_candidates = [0.0, 0.2] + [x/2 for x in range(1, 17)]  # 0.5,1.0,...,8.0
-                for td in td_candidates:
+    candidates = []  # (span, d, v, tf, td, iv)
+
+    # —— 粗扫：方向更密、tFly 更长 —— #
+    for k in range(64):                     # 方向 64 等分（原来 16/32）
+        d = 2*math.pi * k / 64
+        for v in (70, 80, 90, 100, 110, 120, 130, 140):
+            # tFly 扩到 0~120s，步长 3s（原来 0~40）
+            for tf in range(0, 121, 3):
+                # tDrop 更细：0.0、0.2、0.5~10.0（0.5 台阶）
+                td_list = [0.0, 0.2] + [x/2 for x in range(1, 21)]  # 0.5..10.0
+                for td in td_list:
                     iv = work_interval(d, v, float(tf), float(td), dt_coarse=dt)
                     if iv[0] >= 0.0:
                         span = iv[1] - iv[0]
-                        if (best is None) or (span > best[0]):
-                            best = (span, d, v, float(tf), float(td), iv)
+                        candidates.append((span, d, v, float(tf), float(td), iv))
+
+    if not candidates:
+        return None
+
+    # 取 Top-N 做局部精修
+    candidates.sort(key=lambda x: x[0], reverse=True)
+    topN = candidates[:12]   # 取前 12 个
+
+    best = topN[0]
+    for _, d0, v0, tf0, td0, iv0 in topN:
+        span, d1, v1, tf1, td1, iv1 = refine_single(d0, v0, tf0, td0, iv0, dt_ref=0.05)
+        if span > best[0]:
+            best = (span, d1, v1, tf1, td1, iv1)
     return best
+def refine_single(d, v, tf, td, iv_init, dt_ref=0.05):
+    """
+    对单发 (d, v, tf, td) 做几轮坐标搜索：依次微调 d/v/tf/td，
+    只要能让区间变长就接受。返回更长的单段。
+    """
+    L0, R0 = iv_init
+    best_span = R0 - L0
+    best = (d, v, tf, td, (L0, R0))
+
+    # 步长设定（可适当再减小）
+    steps = {
+        "d":  (0.06, 0.02, 8),     # 航向：先大后小，迭代 8 次
+        "v":  (6.0,  2.0, 5),      # 速度：±6、±2
+        "tf": (4.0,  1.0, 6),      # tFly：±4、±1
+        "td": (1.0,  0.3, 6),      # tDrop：±1、±0.3
+    }
+
+    def try_update(d, v, tf, td):
+        iv = work_interval(d, v, tf, td, dt_coarse=dt_ref)
+        if iv[0] < 0.0:
+            return None
+        return (iv[1] - iv[0], d, v, tf, td, iv)
+
+    # 坐标搜索：循环几轮
+    for _ in range(3):
+        improved = False
+        # 依次优化四个变量
+        for key in ("d", "v", "tf", "td"):
+            big, small, times = steps[key]
+            for step in (big, small):
+                for _ in range(times):
+                    d0, v0, tf0, td0, iv0 = best[0], best[1], best[2], best[3], best[4]
+                    # 当前最优
+                    d_cur, v_cur, tf_cur, td_cur, (L_cur, R_cur) = best[0], best[1], best[2], best[3], best[4]
+                    span_cur = R_cur - L_cur
+
+                    # 正负两个方向尝试
+                    trials = []
+                    if key == "d":
+                        trials = [ (d_cur + step, v_cur, tf_cur, td_cur),
+                                   (d_cur - step, v_cur, tf_cur, td_cur) ]
+                    elif key == "v":
+                        trials = [ (d_cur, max(70.0, min(140.0, v_cur + step)), tf_cur, td_cur),
+                                   (d_cur, max(70.0, min(140.0, v_cur - step)), tf_cur, td_cur) ]
+                    elif key == "tf":
+                        trials = [ (d_cur, v_cur, max(0.0, tf_cur + step), td_cur),
+                                   (d_cur, v_cur, max(0.0, tf_cur - step), td_cur) ]
+                    else:  # td
+                        trials = [ (d_cur, v_cur, tf_cur, max(0.0, td_cur + step)),
+                                   (d_cur, v_cur, tf_cur, max(0.0, td_cur - step)) ]
+
+                    better = None
+                    for (dd, vv, tff, tdd) in trials:
+                        res = try_update(dd, vv, tff, tdd)
+                        if res and res[0] > span_cur + 1e-6:
+                            if (better is None) or (res[0] > better[0]):
+                                better = res
+                    if better:
+                        best_span, d, v, tf, td, iv = better
+                        best = (d, v, tf, td, iv)
+                        improved = True
+                    else:
+                        break  # 这一档步长没提升，换下一档或下一个变量
+        if not improved:
+            break
+
+    d, v, tf, td, (L, R) = best
+    return (R - L, d, v, tf, td, (L, R))
 
 
 # 用单发种子 + 接力生成三发；如果找不到，再退回随机初始化
