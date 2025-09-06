@@ -75,12 +75,12 @@ def solve(state):
             intervals.append(time)
     if len(intervals)==0:
         return -1
-    intervals = sorted(intervals, key=lambda x: (x[0], -x[1]))
+    intervals = sorted(intervals, key=lambda x: (x[0]))
     ans=intervals[0][1]-intervals[0][0]
     R=intervals[0][1]
     for i in range(1,len(intervals)):
-        if intervals[i][1]>R-error:
-            if intervals[i][0]>R+error:
+        if intervals[i][1]>R:
+            if intervals[i][0]>R:
                 ans+=intervals[i][1]-intervals[i][0]
                 R=intervals[i][1]
             else:
@@ -149,10 +149,10 @@ def init_state():
 def init_v():
     new_v=[0]*n 
     for i in range(0,n,4):
-        new_v[i]=random.uniform(-2*math.pi*0.17,2*math.pi*0.17)
-        new_v[i+1]=random.uniform(-35*0.17,35*0.17)
-        new_v[i+2]=random.uniform(-35*0.17,35*0.17)
-        new_v[i+3]=random.uniform(-35*0.17,35*0.17)
+        new_v[i]=random.uniform(-2*math.pi*0.10,2*math.pi*0.10)
+        new_v[i+1]=random.uniform(-35*0.10,35*0.10)
+        new_v[i+2]=random.uniform(-35*0.10,35*0.10 )
+        new_v[i+3]=random.uniform(-35*0.10,35*0.10)
     return new_v
 
 
@@ -235,11 +235,15 @@ def main():
     
     for i in tqdm(range(M)):
         # 构造所有新状态   
-        v_news = [new_v(i, j) for j in range(N)]
-        states_new = [new_state(j, v_news[j]) for j in range(N)]
-        hybrid_time=random.randint(10,N//4)
-        for _ in range(hybrid_time):
-            hybrid(states_new, v_news)
+        if i%2==1:
+            v_news = [new_v(i, j) for j in range(N)]
+            states_new = [new_state(j, v_news[j]) for j in range(N)]
+        else:
+            v_news = [deepcopy(v[j]) for j in range(N)]
+            states_new = [deepcopy(state[j]) for j in range(N)]
+            hybrid_time=random.randint(10,N//4)
+            for _ in range(hybrid_time):
+                hybrid(states_new, v_news)
         # 分包
         state_batches = [states_new[start:end] for start, end in indices_list]
         with ProcessPoolExecutor(max_workers=num_chunks) as executor:

@@ -23,7 +23,7 @@ pub fn visible(check_cylinder: &Cylinder, smoke_ball: &SmokeBall, missile: &Miss
     if missile.x<0.0{
         return true;
     }
-    let checkN=50;
+    let checkN=500;
     for _i in 0..checkN{
         let point=check_cylinder.random_point_on_surface();
         if !cross(point,smoke_ball,missile){
