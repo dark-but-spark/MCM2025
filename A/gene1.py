@@ -122,7 +122,7 @@ for _ in tqdm(range(50),desc=f"FY{FYid}"):
     result=get_new_gene()
     if result==-1:
         break
-    open(f"data/new_FY{FYid}_gene.txt","w").write(f"{result[0]} {result[1]} {result[2]} {result[3]} {result[4]}\n")
+    open(f"data/new_FY{FYid}_gene.txt","a").write(f"{result[0]} {result[1]} {result[2]} {result[3]} {result[4]}\n")
     Message(f"找到一个基因，烟幕保护时间为{result[4]:.3f}s，FY{FYid}方向为{result[0]:.3f}rad，速度为{result[1]:.3f}m/s，飞行时间为{result[2]:.3f}s，投放时间为{result[3]:.3f}s","INFO")
 
 
