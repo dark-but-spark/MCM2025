@@ -162,8 +162,7 @@ def update(direction_new, FY1_v_new,
 def clamp_nonneg(x): return x if x >= 0.0 else 0.0
 def clamp(x, lo, hi): return lo if x < lo else (hi if x > hi else x)
 
-# 仍然放在 clamp 之后
-def t0_to_release(t01, t02, t03, TF_MAX=180.0, TD_MAX=60.0, eps=0.20):
+def t0_to_release(t01, t02, t03, TF_MAX=180.0, TD_MAX=60.0, eps=0.0):  # ← 0.2 -> 0.0
     tf1 = max(0.0, min(t01 - eps, TF_MAX)); td1 = t01 - tf1
     tf2 = max(0.0, min(t02 - eps, TF_MAX)); td2 = t02 - tf2
     tf3 = max(0.0, min(t03 - eps, TF_MAX)); td3 = t03 - tf3
@@ -342,31 +341,58 @@ real  = Cylinder(r=7, height=10, x=0, y=200, z=0)
 error = 1e-5
 
 # —— 粗搜一个能打出较长遮蔽的单发 ——
-def single_seed(dt=0.10):
+def single_seed(dt=0.07):  # ← 粗搜也稍微细一点
+    """
+    扫更密的航向、速度、tFly、tDrop 网格，尽量捞到 6s+ 的单段遮蔽
+    说明：
+      - 航向：32 等分
+      - 速度：80~130 步长 10（覆盖你现在的 130 这一带）
+      - tFly：0~40 步长 2
+      - tDrop：0.0, 0.2, 0.5~8.0（0.5 一个台阶）
+    """
     best = None
-    for k in range(16):                 # 航向 16 等分
-        d = 2*math.pi * k / 16
-        for v in (70, 85, 100, 115, 130, 140):
-            for tf in (0, 5, 10, 15, 20, 25, 30):
-                for td in (0.2, 1, 2, 3, 4, 5, 6, 7, 8):
-                    iv = work_interval(d, v, tf, td, dt_coarse=dt)
+    for k in range(32):                              # ← 16 -> 32
+        d = 2*math.pi * k / 32
+        for v in (80, 90, 100, 110, 120, 130):       # ← 保守但覆盖关键段
+            for tf in range(0, 41, 2):               # ← 0,2,4,...,40
+                # 0.0 和 0.2 单独试，其余从 0.5 开始到 8.0
+                td_candidates = [0.0, 0.2] + [x/2 for x in range(1, 17)]  # 0.5,1.0,...,8.0
+                for td in td_candidates:
+                    iv = work_interval(d, v, float(tf), float(td), dt_coarse=dt)
                     if iv[0] >= 0.0:
                         span = iv[1] - iv[0]
                         if (best is None) or (span > best[0]):
-                            best = (span, d, v, tf, td, iv)
+                            best = (span, d, v, float(tf), float(td), iv)
     return best
+
 
 # 用单发种子 + 接力生成三发；如果找不到，再退回随机初始化
 seed = single_seed(dt=0.10)
 if seed:
     _, direction, FY1_v, tFly1, tDrop1, iv1 = seed
+    
     # 接力构造 2/3 发
-    L, R = iv1
-    span = max(0.5, R - L)
-    t02  = R + 0.08
-    t03  = R + 0.08 + span + 0.08
-    (p1, p2, p3, _) = t0_to_release(tFly1 + tDrop1, t02, t03)
-    (tFly1, tDrop1), (tFly2, tDrop2), (tFly3, tDrop3) = p1, p2, p3
+    best_pack = None
+    for gap in (0.06,0.08, 0.10, 0.12, 0.14, 0.16):
+        L, R = iv1
+        span = max(0.5, R - L)
+        # 用单段的右端 R 当第1段结束，接力排第2/3段的起爆时刻
+        t02  = R + gap
+        t03  = R + gap + span + gap
+
+        (p1, p2, p3, _) = t0_to_release(tFly1 + tDrop1, t02, t03)
+        (tf1, td1), (tf2, td2), (tf3, td3) = p1, p2, p3
+
+        score, ulen = work_three(direction, FY1_v,
+                                 tf1, td1, tf2, td2, tf3, td3,
+                                 dt_coarse=0.09, overlap_penalty=0.15)
+        if best_pack is None or score > best_pack[0]:
+            best_pack = (score, ulen, tf1, td1, tf2, td2, tf3, td3, gap)
+
+    # 用到目前最优的那组时间
+    nowscore, nowTime = best_pack[0], best_pack[1]
+    tFly1, tDrop1, tFly2, tDrop2, tFly3, tDrop3 = best_pack[2:8]
+    Message(f"[seed-chain] gap={best_pack[8]:.2f}, score={nowscore:.3f}, time={nowTime:.3f}", "INFO")
 else:
     Message("粗搜不到单发遮蔽，转为随机初始化", "WARNING")
     direction = random.uniform(0, 2*math.pi)
