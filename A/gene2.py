@@ -89,7 +89,7 @@ def choose_new(step):
     FY1_tDrop_new=(FY1_tDrop+step0*math.cos(theta1)*math.cos(theta3)*10+35)%35
     return [direction_new,FY1_v_new,FY1_tFly_new,FY1_tDrop_new ]
 def get_new_gene():
-    for _ in range(10000):
+    while True:
         direction=random.uniform(0,2*math.pi)
         FY1_v=random.uniform(70,140)
         FY1_tFly=random.uniform(0,70)
@@ -119,7 +119,7 @@ ans=[]
 FYid=2
 Message(f"开始计算FY{FYid}","INFO")
 ans=[]
-for _ in tqdm(range(100),desc=f"FY{FYid}"):
+for _ in tqdm(range(50),desc=f"FY{FYid}"):
     result=get_new_gene()
     if result==-1:
         break
