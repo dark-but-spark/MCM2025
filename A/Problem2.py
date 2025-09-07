@@ -156,7 +156,8 @@ for i in tqdm(range(2000)):
     step=step*alpha
     if(step<=error):
         break
-Message(f"最终结果，烟幕保护时间为{maxTime:.3f}s，方向为{direction_best:.3f}rad，速度为{FY1_v_best:.3f}m/s，飞行时间为{FY1_tFly_best:.3f}s，投放时间为{FY1_tDrop_best:.3f}s","INFO")
+state=[direction_best,FY1_v_best,FY1_tFly_best,FY1_tDrop_best]
+Message(f"最终结果，烟幕保护时间为{maxTime:.3f}s，state={state},方向为{direction_best:.3f}rad，速度为{FY1_v_best:.3f}m/s，飞行时间为{FY1_tFly_best:.3f}s，投放时间为{FY1_tDrop_best:.3f}s","INFO")
 Message("运行结束Problem2","INFO")
         
             
