@@ -32,7 +32,7 @@ def work(direction,FY1_v,FY1_tFly,FY1_tDrop,Mid,FYid,dt=0.1): #计算某个烟�
             break
         if t>FY1_tFly+FY1_tDrop+20+error:
             # Message(f"未找到答案，烟幕20s内没有保护目标,方向为{direction:.3f}rad","INFO")
-            return -1
+            return 0
     # while True:
     #     t+=dt
     #     M1.time_tick(dt)
@@ -63,16 +63,38 @@ def work(direction,FY1_v,FY1_tFly,FY1_tDrop,Mid,FYid,dt=0.1): #计算某个烟�
             RR=t
     # Message(f"导弹在t={L:.3f}s到t={R:.3f}s看不到真目标,方向为{direction:.3f}rad，FY{FYid}速度为{FY1_v:.3f}m/s，飞行时间为{FY1_tFly:.3f}s，投放时间为{FY1_tDrop:.3f}s","INFO")
     return [L,R]
-def solve(state):
+def solve(state,Mid=1):
     intervals=[]
-    for i in range(0, len(state), 4):
+    for i in range(0, len(state), 8):
         direction=state[i]
         FY1_v=state[i+1]
-        FY1_tFly=state[i+2]
-        FY1_tDrop=state[i+3]
-        time=work(direction,FY1_v,FY1_tFly,FY1_tDrop,1,i//4+1)
-        if time!=-1:
-            intervals.append(time)
+        for j in range(3):
+            FY1_tFly=state[i+j*2+2]
+            FY1_tDrop=state[i+j*2+3]
+            time=work(direction,FY1_v,FY1_tFly,FY1_tDrop,Mid,i//8+1)
+            if time!=0:
+                intervals.append(time)
+    if len(intervals)==0:
+        return -1
+    intervals = sorted(intervals, key=lambda x: (x[0]))
+    ans=[[intervals[0][0],intervals[0][1]]]
+    R=intervals[0][1]
+    for i in range(1,len(intervals)):
+        if intervals[i][1]>R:
+            if intervals[i][0]>R:
+                ans.append([intervals[i][0],intervals[i][1]])   
+                R=intervals[i][1]
+            else:
+                ans[-1][1]=intervals[i][1]
+                R=intervals[i][1]
+    return ans
+def solve_missile(state):
+    intervals=[]
+    for i in range(1,4):
+        interval=solve(state,i)
+        if interval!=-1:
+            for it in interval:
+                intervals.append(it)
     if len(intervals)==0:
         return -1
     intervals = sorted(intervals, key=lambda x: (x[0]))
@@ -81,7 +103,7 @@ def solve(state):
     for i in range(1,len(intervals)):
         if intervals[i][1]>R:
             if intervals[i][0]>R:
-                ans+=intervals[i][1]-intervals[i][0]
+                ans+=intervals[i][1]-intervals[i][0]   
                 R=intervals[i][1]
             else:
                 ans+=intervals[i][1]-R
@@ -124,18 +146,26 @@ def new_v(m,i):
     for j in range(n):
         r1=random.uniform(0,1)
         r2=random.uniform(0,1)
-        vv[j]=w*vv[j]+c1*r1*(state_personal_best[i][j]-state[i][j])
+        vv[j]=w*vv[j]+c1*r1*(state_personal_best[i][j]-state[i][j])+c2*r2*(state_best[j]-state[i][j])
     return vv
 def new_state(i,v_new):
     '''
     更新粒子i的位置
     '''
     state_new=deepcopy(state[i])
-    for j in range(0,n,4):
+    for j in range(0,n,8):
         state_new[j]=(state[i][j]+v_new[j]+2*math.pi)%(2*math.pi)
         state_new[j+1]=(state[i][j+1]+v_new[j+1]+70)%70+70
-        state_new[j+2]=(state[i][j+2]+v_new[j+2]+35)%35
-        state_new[j+3]=(state[i][j+3]+v_new[j+3]+35)%35
+        state_new[j+2]=(state[i][j+2]+v_new[j+2]+70)%70
+        state_new[j+3]=(state[i][j+3]+v_new[j+3]+70)%70
+        state_new[j+4]=(state[i][j+4]+v_new[j+4]+70)%70
+        state_new[j+5]=(state[i][j+5]+v_new[j+5]+70)%70
+        state_new[j+6]=(state[i][j+6]+v_new[j+6]+70)%70
+        state_new[j+7]=(state[i][j+7]+v_new[j+7]+70)%70
+        if(state_new[j+2]+1>state_new[j+4]):
+            state_new[j+4]=state_new[j+2]+1
+        if(state_new[j+4]+1>state_new[j+6]):
+            state_new[j+6]=state_new[j+4]+1
     return state_new
 
 def get_seed_state(i):
@@ -143,45 +173,53 @@ def get_seed_state(i):
     获取粒子i的状态
     '''
 
-    f=open(f"data/new_FY{i+1}_gene.txt","r")
+    f=open(f"data/new_FY{i+1}_genePro.txt","r")
     id=random.randint(0,len_f[i]-1)
     line=""
     for _ in range(id+1):
         line=f.readline()
     f.close()
     state=[float(x) for x in line.strip().split()]
-    if len(state)!=5:
+    if len(state)!=9:
         Message(f"获取粒子{id}状态失败，行内容为：{line}","ERROR")
     return state
 def init_state():
     new_state=[0]*n 
-    k=7
+    k=31
     time_=0
-    for i in range(0,n,4):
-        if(k&(1<<(i//4))>0):
-            [new_state[i],new_state[i+1],new_state[i+2],new_state[i+3],time_]=get_seed_state(i//4)
+    for i in range(0,n,8):
+        if(k&(1<<(i//8))>0):
+            [new_state[i],new_state[i+1],new_state[i+2],new_state[i+3],new_state[i+4],new_state[i+5],new_state[i+6],new_state[i+7],time_]=get_seed_state(i//8)
         else:
             new_state[i]=random.uniform(0,2*math.pi)
             new_state[i+1]=random.uniform(70,140)
-            new_state[i+2]=random.uniform(0,35)
-            new_state[i+3]=random.uniform(0,35-new_state[i+2])
+            new_state[i+2]=random.uniform(0,70)
+            new_state[i+3]=random.uniform(0,70-new_state[i+2])
+            new_state[i+4]=new_state[i+2]+max(random.uniform(0,69-new_state[i+2]),0)+1
+            new_state[i+5]=max(random.uniform(0,70-new_state[i+4]),0)
+            new_state[i+6]=new_state[i+4]+max(random.uniform(0,69-new_state[i+4]),0)+1
+            new_state[i+7]=max(random.uniform(0,70-new_state[i+6]),0)
     return new_state
 def init_v():
     new_v=[0]*n 
-    for i in range(0,n,4):
-        new_v[i]=random.uniform(-2*math.pi*0.10,2*math.pi*0.10)
-        new_v[i+1]=random.uniform(-35*0.10,35*0.10)
-        new_v[i+2]=random.uniform(-35*0.10,35*0.10 )
-        new_v[i+3]=random.uniform(-35*0.10,35*0.10)
+    for i in range(0,n,8):
+        new_v[i]=random.uniform(-2*math.pi*0.01,2*math.pi*0.01)
+        new_v[i+1]=random.uniform(-35*0.01,35*0.01)
+        new_v[i+2]=random.uniform(-35*0.01,35*0.01)
+        new_v[i+3]=random.uniform(-35*0.01,35*0.01)
+        new_v[i+4]=random.uniform(-35*0.01,35*0.01)
+        new_v[i+5]=random.uniform(-35*0.01,35*0.01)
+        new_v[i+6]=random.uniform(-35*0.01,35*0.01)
+        new_v[i+7]=random.uniform(-35*0.01,35*0.01)
     return new_v
 
 
 real= Cylinder(r=7,height=10,x=0,y=200,z=0)
 error=1e-5
 
-N=10000#粒子数量
-M=100#最大迭代次数
-n=12
+N=1000#粒子数量
+M=1000#最大迭代次数
+n=40
 w_max=0.9;w_min=0.4
 state=[[] for _ in range(N)]# 记录状态
 # 分别为 FY1的direction，speed，fly时间，drop时间 FY2的direction，speed，fly时间，drop时间 FY3的direction，speed，fly时间，drop时间
@@ -191,9 +229,9 @@ state_best=[[] for _ in range(N)]
 Time_best=0
 state_personal_best=[[] for _ in range(N)]
 Time_personal_best=[0]*N
-len_f=[0]*3
-for i in range(3):
-    len_f[i]=sum(1 for line in open(f"data/new_FY{i+1}_gene.txt"))
+len_f=[0]*5
+for i in range(5):
+    len_f[i]=sum(1 for line in open(f"data/new_FY{i+1}_genePro.txt"))
 
 # 多线程并发初始化所有粒子的状态和时间
 
@@ -208,28 +246,21 @@ def batch_init_states(indices):
     batch_vs = []
     for idx in tqdm(range(*indices)):
         state_new = init_state()
-        nowTime = solve(state_new)
-        while nowTime < 0:
+        nowTime = solve_missile(state_new)
+        while nowTime <=0:
             state_new = init_state()
-            nowTime = solve(state_new)
+            nowTime = solve_missile(state_new)
         v_new = init_v()
         batch_states.append(state_new[:]) 
         batch_times.append(nowTime)
         batch_vs.append(v_new)
     return batch_states, batch_times, batch_vs
 
-
-
-
-def batch_solve(states_batch):
-    return [solve(state) for state in states_batch]
-
-
 def hybrid(state, v):
     i=random.randint(0,N-1)
     j=random.randint(0,N-1)
-    k=random.randint(0,2)
-    for _ in range(k*4,(k+1)*4):
+    k=random.randint(0,4)
+    for _ in range(k*8,(k+1)*8):
         temp=state[i][_]
         state[i][_] = state[j][_]
         state[j][_] = temp
@@ -237,9 +268,14 @@ def hybrid(state, v):
         v[i][_] = v[j][_]
         v[j][_] = temp
 
+
+
+def batch_solve(states_batch):
+    return [solve_missile (state) for state in states_batch]
+
 def main():
     global Time_best, state_best, Time_personal_best, state_personal_best
-    Message("开始运行Problem4","INFO")
+    Message("开始运行Problem5","INFO")
     num_chunks = max(1, os.cpu_count()-2)
     indices_list = chunk_indices(N, num_chunks)
     from concurrent.futures import ProcessPoolExecutor
@@ -256,6 +292,17 @@ def main():
     update_best()
     
     for i in tqdm(range(M)):
+        # with ProcessPoolExecutor(max_workers=num_chunks) as executor:
+        #     results = list(executor.map(batch_init_states, indices_list))
+        #     # 展开结果
+        #     idx = 0
+        #     for batch_states, batch_times, batch_vs in results:
+        #         for s, t, v_new in zip(batch_states, batch_times, batch_vs):
+        #             state[idx] = s
+        #             Time[idx] = t
+        #             v[idx] = v_new
+        #             idx += 1
+        # update_best()
         # 构造所有新状态   
         if i%2==1:
             v_news = [new_v(i, j) for j in range(N)]
@@ -264,8 +311,9 @@ def main():
             v_news = [deepcopy(v[j]) for j in range(N)]
             states_new = [deepcopy(state[j]) for j in range(N)]
             hybrid_time=random.randint(10,N//4)
-        for _ in range(hybrid_time):
-            hybrid(states_new, v_news)
+            for _ in range(hybrid_time):
+                hybrid(states_new, v_news)
+        
         # 分包
         state_batches = [states_new[start:end] for start, end in indices_list]
         with ProcessPoolExecutor(max_workers=num_chunks) as executor:
@@ -277,7 +325,7 @@ def main():
         update_best()
 
     Message(f"目前最优解，烟幕保护时间为{Time_best:.3f}s，状态为{state_best}", "INFO")
-    Message("运行结束Problem4","INFO")
+    Message("运行结束Problem5","INFO")
       
 if __name__ == "__main__":
     main()

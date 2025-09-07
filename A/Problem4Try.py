@@ -94,15 +94,27 @@ Message("开始运行Problem4","INFO")
 real= Cylinder(r=7,height=10,x=0,y=200,z=0)
 error=1e-5
 ans=0
+direction_per_best=[0.096,4.810,1.326]
+FY1_v_per_best=[91.816,103.479,123.794]
+FY1_tFly_per_best=[0.478,7.228,23.904]
+FY1_tDrop_per_best=[0.633,5.991,1.766]
+
+state_best=[]
 for FYid in range(1,4):
     Message(f"开始计算FY{FYid}","INFO")
     T=2000
-    step=5
+    step=5 
     alpha=math.exp(-1e-2)
-    direction=random.uniform(0,2*math.pi)
-    FY1_v=random.uniform(70,140)
-    FY1_tFly=random.uniform(0,35)
-    FY1_tDrop=random.uniform(0,70-FY1_tFly)
+    if len(direction_per_best)>=FYid:
+        direction=direction_per_best[FYid-1]
+        FY1_v=FY1_v_per_best[FYid-1]
+        FY1_tFly=FY1_tFly_per_best[FYid-1]
+        FY1_tDrop=FY1_tDrop_per_best[FYid-1]
+    else:
+        direction=random.uniform(0,2*math.pi)
+        FY1_v=random.uniform(70,140)
+        FY1_tFly=random.uniform(0,35)
+        FY1_tDrop=random.uniform(0,70-FY1_tFly)
     nowTime=work(direction,FY1_v,FY1_tFly,FY1_tDrop,FYid=FYid)
     while nowTime<0:
         direction=random.uniform(0,2*math.pi)
@@ -159,8 +171,9 @@ for FYid in range(1,4):
         if(step<=error):
             break
     ans+=maxTime
+    state_best.extend([direction_best,FY1_v_best,FY1_tFly_best,FY1_tDrop_best])
     Message(f"最终结果，烟幕保护时间为{maxTime:.3f}s，FY{FYid}方向为{direction_best:.3f}rad，速度为{FY1_v_best:.3f}m/s，飞行时间为{FY1_tFly_best:.3f}s，投放时间为{FY1_tDrop_best:.3f}s","INFO")
-Message(f"三枚烟幕总保护时间为{ans:.3f}s","INFO")
+Message(f"三枚烟幕总保护时间为{ans:.3f}s,状态为{state_best}","INFO")
 Message("运行结束Problem4","INFO")
         
             

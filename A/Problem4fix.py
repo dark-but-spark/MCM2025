@@ -166,58 +166,45 @@ def init_v():
         new_v[i+3]=random.uniform(-35*0.17,35*0.17)
     return new_v
 
-Message("开始运行Problem4","INFO")
-real= Cylinder(r=7,height=10,x=0,y=200,z=0)
-error=1e-5
+Message("开始运行模拟退火优化", "INFO")
+real = Cylinder(r=7, height=10, x=0, y=200, z=0)
+error = 1e-5
 
-N=1000#粒子数量
-M=10000#最大迭代次数
-n=12
-w_max=0.9;w_min=0.4
-c1=1.7;c2=2.3
-state=[[] for _ in range(N)]# 记录状态
-# 分别为 FY1的direction，speed，fly时间，drop时间 FY2的direction，speed，fly时间，drop时间 FY3的direction，speed，fly时间，drop时间
-v=[[] for _ in range(N)]
-Time=[0]*N
-state_best=[[] for _ in range(N)]
-Time_best=0
-state_personal_best=[[] for _ in range(N)]
-Time_personal_best=[0]*N
-len_f=[0]*3
-for i in range(3):
-    len_f[i]=sum(1 for line in open(f"data/new_FY{i+1}_gene.txt"))
-for i in range(N):
-    state_new=init_state()
-    nowTime=solve(state_new)
-    if(i<=10):
-        while nowTime<0:
-            state_new=init_state()
-            nowTime=solve(state_new)
-    if nowTime<0:
-        nowTime=0
-    state[i]=deepcopy(state_new)
-    Time[i]=nowTime
-    v[i]=init_v()
-update_best()
+n = 12  # 变量数
+max_iter = 10000
+T_init = 1.0
+T_min = 1e-3
+alpha = 0.995
+state = [0.10478400131367793, 132.71010692660178, 0.014027023094297375, 0.7335450184471377, 4.972803199220907, 94.1557131719749, 9.773174085123923, 5.450962590846851, 1.3059042219759873, 124.69214398202324, 24.235984130829728, 1.3757734434848459]
+  # 初始化
+best_state = state[:]
+best_time = solve(state)
+T = T_init
 
+for i in tqdm(range(max_iter)):
+    # 随机扰动一个变量
+    new_state = state[:]
+    idx = random.randint(0, n-1)
+    if idx % 4 == 0:
+        new_state[idx] = (state[idx] + random.uniform(-0.1, 0.1)) % (2*math.pi)
+    elif idx % 4 == 1:
+        new_state[idx] = min(max(state[idx] + random.uniform(-5, 5), 70), 140)
+    elif idx % 4 == 2:
+        new_state[idx] = min(max(state[idx] + random.uniform(-2, 2), 0), 35)
+    elif idx % 4 == 3:
+        new_state[idx] = min(max(state[idx] + random.uniform(-2, 2), 0), 35-new_state[idx-1])
+    new_time = solve(new_state)
+    delta = new_time - best_time
+    if delta > 0:
+        state = new_state[:]
+        T /= alpha
+        if new_time > best_time:
+            best_time = new_time
+            best_state = new_state[:]
+            Message(f"迭代{i}: 当前最优保护时间={best_time:.3f}, 状态={best_state}", "INFO")
+    T *= alpha
+    if T < T_min:
+        break
 
-for i in tqdm(range(M)):
-
-    for j in range(N):
-        v_new=new_v(i,j)
-        state_new=new_state(j,v_new)
-        nowTime=solve(state_new)
-        if nowTime<0:
-            nowTime=0
-        # while nowTime<0:
-        #     v_new=new_v(i,j)
-        #     state_new=new_state(j,v_new)
-        #     nowTime=solve(state_new)
-        
-        update(state_new,v_new,nowTime,i)
-    update_best()
-
-Message(f"目前最优解，烟幕保护时间为{Time_best:.3f}s，状态为{state_best}", "INFO")
-Message("运行结束Problem4","INFO")
-        
-            
+Message(f"最终最优解，烟幕保护时间为{best_time:.3f}s，状态为{best_state}", "INFO")
+Message("运行结束模拟退火优化", "INFO")
